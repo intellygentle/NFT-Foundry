@@ -1,0 +1,9 @@
+{
+  "sepolia": {
+    "factory": "0xC5806473F341AFB0E9A9872D3369Cf00Fc96b5d6",
+    "chainId": 11155111,
+    "deployedAt": "2026-03-14T22:41:14.317Z",
+    "deployer": "0x644429776367A1bDd8350D99897726B295D8fBcc",
+    "txHash": "0xc116dfbe4bca86b7dc040c8866fbe30c4233d0e006baae1327b14b9c812188ea"
+  }
+}
