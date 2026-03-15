@@ -119,44 +119,34 @@ export class ShelbyService {
 
     // Load @aptos-labs/ts-sdk
     const aptos = require("@aptos-labs/ts-sdk");
-    const { Ed25519PrivateKey, Ed25519Account, Account, Network } = aptos;
+    const { Ed25519PrivateKey, Ed25519Account, Account, Network, AptosConfig, Aptos } = aptos;
 
     if (!Ed25519PrivateKey) {
       throw new Error("@aptos-labs/ts-sdk not installed. Run: npm install @aptos-labs/ts-sdk@5");
     }
 
-    // Resolve Network enum — use TESTNET for Shelbynet
-    let network: unknown = networkStr;
-    if (Network) {
-      if (networkStr === "mainnet" && Network.MAINNET) {
-        network = Network.MAINNET;
-      } else if (Network.TESTNET) {
-        network = Network.TESTNET;
-      } else if ((Network as any).SHELBYNET) {
-        network = (Network as any).SHELBYNET;
-      }
-    }
+    // Shelbynet uses its own fullnode — must be set explicitly
+    // If we just pass Network.TESTNET it hits api.testnet.aptoslabs.com which
+    // requires a separate Aptos API key and is NOT Shelbynet
+    const SHELBYNET_FULLNODE = "https://api.shelbynet.shelby.xyz/v1";
 
-    // Build Aptos account — try Account.fromPrivateKey first (correct v5 API),
-    // fall back to new Ed25519Account for older versions
+    // Build Aptos account
     const privateKey = new Ed25519PrivateKey(privateKeyStr);
     if (Account && typeof Account.fromPrivateKey === "function") {
-      // v5 preferred API — produces Account with .accountAddress correctly set
       this.account = await Account.fromPrivateKey({ privateKey });
     } else if (Ed25519Account) {
-      // Fallback for older SDK versions
       this.account = new Ed25519Account({ privateKey });
     } else {
       throw new Error("Cannot construct Aptos account — Ed25519Account not found in SDK");
     }
-
     this._accountAddress = this.account.accountAddress.toString();
 
-    // Build Shelby client — pass account in config too (some versions need it at init time)
+    // Build Shelby client with explicit Shelbynet fullnode URL
+    // Pass fullnode URL directly so the SDK doesn't default to aptoslabs testnet
     const config: Record<string, unknown> = {
-      network,
-      signer: this.account,
-      account: this.account,
+      fullnode: SHELBYNET_FULLNODE,
+      signer:   this.account,
+      account:  this.account,
     };
     if (apiKey) config.apiKey = apiKey;
 

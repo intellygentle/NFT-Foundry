@@ -7,9 +7,6 @@
     "node": ">=20.0.0",
     "npm": ">=9.0.0"
   },
-  "overrides": {
-    "@aptos-labs/ts-sdk": "$@aptos-labs/ts-sdk"
-  },
   "scripts": {
     "dev": "nodemon --exec 'ts-node --transpile-only src/index.ts'",
     "build": "tsc --skipLibCheck",
