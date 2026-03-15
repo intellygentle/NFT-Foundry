@@ -155,8 +155,12 @@ export class ShelbyService {
     console.log(`  [Shelby] account type: ${this.account.constructor?.name}`);
     console.log(`  [Shelby] account keys: ${Object.keys(this.account).slice(0, 8).join(', ')}`);
 
-    // Build Shelby client
-    const config: Record<string, unknown> = { network };
+    // Build Shelby client — pass account in config too (some versions need it at init time)
+    const config: Record<string, unknown> = {
+      network,
+      signer: this.account,
+      account: this.account,
+    };
     if (apiKey) config.apiKey = apiKey;
 
     this.client = new ShelbyNodeClient(config);
@@ -189,17 +193,21 @@ export class ShelbyService {
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        // Log account shape to debug param name issue
-        console.log(`  [Shelby] account type: ${typeof this.account}`);
-        console.log(`  [Shelby] account keys: ${this.account ? Object.keys(this.account).join(', ') : 'null'}`);
-        console.log(`  [Shelby] accountAddress: ${this._accountAddress}`);
+        // Log account shape for debugging
+        console.log(`  [Shelby] upload attempt ${attempt} | account: ${this._accountAddress}`);
 
-        const { transaction } = await this.client.upload({
-          signer: this.account,
+        // Pass all common Aptos param names — SDK version 0.2.4 may use any of these
+        const uploadParams: any = {
           blobData,
           blobName,
           expirationMicros,
-        });
+          signer:    this.account,
+          account:   this.account,
+          sender:    this.account,
+          publisher: this.account,
+        };
+
+        const { transaction } = await this.client.upload(uploadParams);
 
         console.log(`📤 Shelby upload: ${blobName} | tx: ${transaction.hash}`);
         return {
