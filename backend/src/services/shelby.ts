@@ -152,9 +152,6 @@ export class ShelbyService {
 
     this._accountAddress = this.account.accountAddress.toString();
 
-    console.log(`  [Shelby] account type: ${this.account.constructor?.name}`);
-    console.log(`  [Shelby] account keys: ${Object.keys(this.account).slice(0, 8).join(', ')}`);
-
     // Build Shelby client — pass account in config too (some versions need it at init time)
     const config: Record<string, unknown> = {
       network,
@@ -193,8 +190,9 @@ export class ShelbyService {
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        // Log account shape for debugging
-        console.log(`  [Shelby] upload attempt ${attempt} | account: ${this._accountAddress}`);
+        if (attempt > 1) {
+          console.log(`  [Shelby] upload retry ${attempt}/3 | ${blobName}`);
+        }
 
         // Pass all common Aptos param names — SDK version 0.2.4 may use any of these
         const uploadParams: any = {

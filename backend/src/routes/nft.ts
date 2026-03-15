@@ -84,9 +84,16 @@ router.post(
       });
     } catch (error) {
       console.error("Upload metadata error:", error);
-      res.status(500).json({
-        error: "Failed to upload metadata",
-        details: error instanceof Error ? error.message : "Unknown error",
+      const message = error instanceof Error ? error.message : "Unknown error";
+      const isShelbyStorage = message.includes('multipart') || message.includes('500');
+      const status = message.includes("INSUFFICIENT_BALANCE") ? 402
+        : message.includes("SHELBY_PRIVATE_KEY") ? 503
+        : 500;
+      res.status(status).json({
+        error: isShelbyStorage
+          ? "Shelby storage nodes returned an error. The blob was registered on-chain but file upload failed. Please retry — this is a testnet instability issue. Make sure your account has ShelbyUSD tokens from the Shelby Discord faucet."
+          : "Failed to upload metadata",
+        details: message,
       });
     }
   }
