@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Backend API for multi-chain NFT platform",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
     "dev": "nodemon --exec 'ts-node --transpile-only src/index.ts'",
     "build": "tsc --skipLibCheck",
