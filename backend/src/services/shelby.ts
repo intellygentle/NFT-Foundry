@@ -117,36 +117,43 @@ export class ShelbyService {
       );
     }
 
-    // Load @aptos-labs/ts-sdk directly — NOT from Shelby re-exports
-    // (the Shelby SDK bundles its own copy internally but doesn't re-export
-    // Ed25519Account / Ed25519PrivateKey / Network to consumers)
+    // Load @aptos-labs/ts-sdk
     const aptos = require("@aptos-labs/ts-sdk");
-    const { Ed25519PrivateKey, Ed25519Account, Network } = aptos;
+    const { Ed25519PrivateKey, Ed25519Account, Account, Network } = aptos;
 
-    if (!Ed25519PrivateKey || !Ed25519Account) {
-      throw new Error(
-        "@aptos-labs/ts-sdk not installed. Run: npm install @aptos-labs/ts-sdk@5"
-      );
+    if (!Ed25519PrivateKey) {
+      throw new Error("@aptos-labs/ts-sdk not installed. Run: npm install @aptos-labs/ts-sdk@5");
     }
 
-    // Resolve Network enum — docs use Network.TESTNET for Shelbynet
+    // Resolve Network enum — use TESTNET for Shelbynet
     let network: unknown = networkStr;
     if (Network) {
       if (networkStr === "mainnet" && Network.MAINNET) {
         network = Network.MAINNET;
       } else if (Network.TESTNET) {
-        // Use TESTNET — this is what Shelby docs show for shelbynet
         network = Network.TESTNET;
-      } else if (Network.SHELBYNET) {
-        network = Network.SHELBYNET;
+      } else if ((Network as any).SHELBYNET) {
+        network = (Network as any).SHELBYNET;
       }
     }
 
-    // Build Aptos account from private key
-    this.account = new Ed25519Account({
-      privateKey: new Ed25519PrivateKey(privateKeyStr),
-    });
+    // Build Aptos account — try Account.fromPrivateKey first (correct v5 API),
+    // fall back to new Ed25519Account for older versions
+    const privateKey = new Ed25519PrivateKey(privateKeyStr);
+    if (Account && typeof Account.fromPrivateKey === "function") {
+      // v5 preferred API — produces Account with .accountAddress correctly set
+      this.account = await Account.fromPrivateKey({ privateKey });
+    } else if (Ed25519Account) {
+      // Fallback for older SDK versions
+      this.account = new Ed25519Account({ privateKey });
+    } else {
+      throw new Error("Cannot construct Aptos account — Ed25519Account not found in SDK");
+    }
+
     this._accountAddress = this.account.accountAddress.toString();
+
+    console.log(`  [Shelby] account type: ${this.account.constructor?.name}`);
+    console.log(`  [Shelby] account keys: ${Object.keys(this.account).slice(0, 8).join(', ')}`);
 
     // Build Shelby client
     const config: Record<string, unknown> = { network };
@@ -187,19 +194,12 @@ export class ShelbyService {
         console.log(`  [Shelby] account keys: ${this.account ? Object.keys(this.account).join(', ') : 'null'}`);
         console.log(`  [Shelby] accountAddress: ${this._accountAddress}`);
 
-        // Try both param names — different SDK versions use different names
-        // docs@latest use 'account', specs page uses 'signer'
-        const uploadParams: any = {
+        const { transaction } = await this.client.upload({
+          signer: this.account,
           blobData,
           blobName,
           expirationMicros,
-        };
-
-        // Pass both — the SDK will use whichever it recognizes
-        uploadParams.account = this.account;
-        uploadParams.signer = this.account;
-
-        const { transaction } = await this.client.upload(uploadParams);
+        });
 
         console.log(`📤 Shelby upload: ${blobName} | tx: ${transaction.hash}`);
         return {
