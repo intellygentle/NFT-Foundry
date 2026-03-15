@@ -184,6 +184,8 @@ function SolanaWalletButton() {
   );
 }
 
+import AptosWalletButton from './AptosWalletButton';
+
 // ── Main Navbar ────────────────────────────────────────────────────────────
 export default function Navbar() {
   const { selectedChain } = useChain();
@@ -238,6 +240,9 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           <ShelbyDot />
           <ChainSelector />
+          {/* Aptos wallet — always shown, needed for Shelby uploads */}
+          <AptosWalletButton />
+          {/* EVM or Solana wallet — for contract deployment/minting */}
           {isSolana ? (
             <SolanaWalletButton />
           ) : (

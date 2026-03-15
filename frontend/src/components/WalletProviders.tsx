@@ -1,11 +1,13 @@
 /**
  * components/WalletProviders.tsx
  *
- * All wallet and query providers that require browser APIs (localStorage,
- * window, navigator, etc.). This component is loaded dynamically with
- * { ssr: false } in _app.tsx so it never runs during server-side rendering.
+ * All wallet and query providers that require browser APIs.
+ * Loaded with { ssr: false } in _app.tsx.
  *
- * Safe to use: localStorage, sessionStorage, window, navigator, crypto
+ * Provides:
+ *  - EVM wallets via Wagmi + RainbowKit
+ *  - Solana wallets via @solana/wallet-adapter
+ *  - Aptos wallets via @aptos-labs/wallet-adapter-react (for Shelby signing)
  */
 
 import { ReactNode, useMemo } from 'react';
@@ -14,7 +16,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import {
   ConnectionProvider,
-  WalletProvider,
+  WalletProvider as SolanaWalletProvider,
 } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import {
@@ -23,17 +25,14 @@ import {
   TorusWalletAdapter,
 } from '@solana/wallet-adapter-wallets';
 import { clusterApiUrl } from '@solana/web3.js';
+import { AptosWalletAdapterProvider } from '@aptos-labs/wallet-adapter-react';
 
 import { wagmiConfig } from '../lib/wagmi';
 import { ChainProvider } from '../context/ChainContext';
 
-// QueryClient lives outside the component so it's not recreated on re-renders
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30_000,
-    },
+    queries: { retry: 1, staleTime: 30_000 },
   },
 });
 
@@ -43,9 +42,7 @@ interface WalletProvidersProps {
 
 export default function WalletProviders({ children }: WalletProvidersProps) {
   const solanaEndpoint = useMemo(
-    () =>
-      process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-      clusterApiUrl('devnet'),
+    () => process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl('devnet'),
     []
   );
 
@@ -70,13 +67,22 @@ export default function WalletProviders({ children }: WalletProvidersProps) {
           })}
         >
           <ConnectionProvider endpoint={solanaEndpoint}>
-            <WalletProvider wallets={solanaWallets} autoConnect>
+            <SolanaWalletProvider wallets={solanaWallets} autoConnect>
               <WalletModalProvider>
-                <ChainProvider>
-                  {children}
-                </ChainProvider>
+                {/* Aptos wallet adapter — used for Shelby upload signing */}
+                <AptosWalletAdapterProvider
+                  plugins={[]}
+                  autoConnect={false}
+                  onError={(error: Error) => {
+                    console.warn('Aptos wallet error:', error);
+                  }}
+                >
+                  <ChainProvider>
+                    {children}
+                  </ChainProvider>
+                </AptosWalletAdapterProvider>
               </WalletModalProvider>
-            </WalletProvider>
+            </SolanaWalletProvider>
           </ConnectionProvider>
         </RainbowKitProvider>
       </QueryClientProvider>

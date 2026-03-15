@@ -13,7 +13,8 @@
 
 import { useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet as useSolanaWallet } from '@solana/wallet-adapter-react';
+import { useWallet as useAptosWallet } from '@aptos-labs/wallet-adapter-react';
 import toast from 'react-hot-toast';
 import {
   Button,
@@ -29,6 +30,7 @@ import {
 import ImageDropzone from './ImageDropzone';
 import { useChain } from '../context/ChainContext';
 import { nftApi } from '../lib/api';
+import { uploadNFTToShelby } from '../lib/shelbyBrowser';
 import { ExternalLink, ChevronRight, Rocket } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -129,14 +131,12 @@ function AttributeEditor({
 export default function DeployForm() {
   const { selectedChain } = useChain();
   const { address: evmAddress, isConnected: evmConnected } = useAccount();
-  const { publicKey: solanaKey, connected: solanaConnected } = useWallet();
+  const { publicKey: solanaKey, connected: solanaConnected } = useSolanaWallet();
+  const { account: aptosAccount, connected: aptosConnected } = useAptosWallet();
 
-  // Determine if wallet is connected for selected chain
+  // Chain wallet (EVM or Solana) — for deploying/minting contracts
   const isSolana = selectedChain?.type === 'solana';
   const walletConnected = isSolana ? solanaConnected : evmConnected;
-  const walletAddress = isSolana
-    ? solanaKey?.toBase58()
-    : evmAddress;
 
   // ── Step state ─────────────────────────────────────────────────────────
   const [step, setStep] = useState(0);
@@ -161,33 +161,36 @@ export default function DeployForm() {
   const [deployLoading, setDeployLoading] = useState(false);
   const [result, setResult] = useState<DeployResult | null>(null);
 
-  // ── Step 1: Upload to Shelby ─────────────────────────────────────────
+  // ── Step 1: Upload to Shelby (signed by user's Aptos wallet) ─────────
   const handleUpload = async () => {
     if (!imageFile) return toast.error('Please select an image');
     if (!nftName.trim()) return toast.error('NFT name is required');
     if (!nftDesc.trim()) return toast.error('Description is required');
+    if (!aptosConnected || !aptosAccount) {
+      return toast.error('Connect your Aptos wallet (Petra) to upload to Shelby');
+    }
 
     setUploadLoading(true);
-    const toastId = toast.loading('Uploading to Shelby...');
+    const toastId = toast.loading('Uploading to Shelby — approve in your Aptos wallet...');
 
     try {
-      const formData = new FormData();
-      formData.append('image', imageFile);
-      formData.append('name', nftName);
-      formData.append('description', nftDesc);
-      if (attributes.length > 0) {
-        formData.append('attributes', JSON.stringify(attributes));
-      }
+      const newCollectionId = aptosAccount
+        ? `${String((aptosAccount.address as any) ?? 'col').slice(0, 8)}-${Date.now()}`
+        : `col-${Date.now()}`;
 
-      const res = await nftApi.uploadMetadata(formData);
-      setCollectionId(res.collectionId);
-      setMetadataShelbyUri(res.metadataShelbyUri);
+      const { metadataShelbyUri: uri } = await uploadNFTToShelby(
+        imageFile,
+        { name: nftName, description: nftDesc, attributes },
+        newCollectionId,
+        1
+      );
+
+      setCollectionId(newCollectionId);
+      setMetadataShelbyUri(uri);
       toast.success('Uploaded to Shelby!', { id: toastId });
       setStep(1);
     } catch (err: any) {
-      toast.error(err?.response?.data?.details || err.message || 'Upload failed', {
-        id: toastId,
-      });
+      toast.error(err?.message || 'Upload failed', { id: toastId });
     } finally {
       setUploadLoading(false);
     }
@@ -256,19 +259,28 @@ export default function DeployForm() {
         current={step}
       />
 
-      {/* Wallet gate */}
-      {!walletConnected && (
+      {/* Aptos wallet gate — needed for Shelby upload */}
+      {!aptosConnected && (
         <div className="flex items-center gap-3 p-4 bg-amber-glow border border-amber-dim/30 rounded">
-          <span className="text-amber text-lg">⚡</span>
+          <span className="text-amber text-lg font-bold">A</span>
           <div>
             <p className="text-sm font-mono text-amber font-medium">
-              Connect your wallet to continue
+              Connect your Aptos wallet to upload to Shelby
             </p>
             <p className="text-xs text-dim font-mono mt-0.5">
-              Use the Connect button in the top-right — make sure you're on{' '}
-              <strong>{selectedChain?.name}</strong>
+              Install <a href="https://petra.app" target="_blank" rel="noopener noreferrer" className="underline">Petra Wallet</a> then click the Aptos button in the top-right
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Chain wallet gate — needed for contract deployment */}
+      {!walletConnected && (
+        <div className="flex items-center gap-3 p-4 bg-surface-2 border border-border rounded">
+          <span className="text-amber text-lg">⚡</span>
+          <p className="text-sm font-mono text-dim">
+            Also connect your <strong className="text-text">{selectedChain?.name}</strong> wallet (top-right) to deploy the contract
+          </p>
         </div>
       )}
 
@@ -315,7 +327,7 @@ export default function DeployForm() {
             <Button
               onClick={handleUpload}
               loading={uploadLoading}
-              disabled={!walletConnected || !imageFile}
+              disabled={!aptosConnected || !imageFile}
             >
               Upload to Shelby
               <ChevronRight size={14} />

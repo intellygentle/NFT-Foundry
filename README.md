@@ -1,369 +1,307 @@
 # 🔥 NFT Foundry
 
-Multi-chain NFT deployment platform with **Shelby Protocol** decentralized storage.
-Deploy NFT collections on Ethereum, Polygon, and Solana. All metadata is stored permanently on Shelby — censorship-resistant, built on Aptos.
+A multi-chain NFT deployment platform with **Shelby Protocol** decentralized storage.
+Deploy NFT collections on Ethereum Sepolia and Polygon Mumbai. All metadata is stored permanently on Shelby — censorship-resistant, built on Aptos.
+
+## 🌐 Live Demo
+
+| Service | URL |
+|---------|-----|
+| **Frontend** | https://nft-foundry.vercel.app |
+| **Backend API** | https://nft-foundry-production.up.railway.app |
+| **Health Check** | https://nft-foundry-production.up.railway.app/health |
 
 ---
 
-## Architecture
+## ✨ Features
+
+- **Multi-chain deployment** — Ethereum Sepolia, Polygon Mumbai, Solana Devnet
+- **Shelby Protocol storage** — NFT images and metadata stored on decentralized Aptos-based storage
+- **Three wallet types** — EVM (MetaMask/RainbowKit), Solana (Phantom/Solflare), Aptos (Petra)
+- **Batch deploy** — upload an entire collection at once, edit metadata per item
+- **Single deploy** — upload one NFT image, configure collection, deploy contract
+- **Mint** — mint NFTs into any deployed collection
+- **Collections** — browse your deployed collections with on-chain stats
+
+---
+
+## 🏗 Architecture
 
 ```
-nft-foundry/
-├── frontend/          Next.js 14 app (Wagmi + RainbowKit + Solana Wallet Adapter)
-├── backend/           Express API (TypeScript) — Shelby uploads, chain interactions
-└── contracts/
-    ├── evm/           Hardhat — ShelbyNFT + ShelbyNFTFactory (Solidity)
-    └── solana/        Anchor — Solana NFT program (Rust, placeholder)
-```
-
-### How it works
-
-```
-User selects chain → connects wallet → uploads NFT image
-    ↓
-Backend receives image → uploads to Shelby Protocol (Aptos-based storage)
-    ↓
-Shelby returns blobName + account address
-    ↓
-Backend builds shelby:// URI  (e.g. shelby://0xabc.../nfts/col1/metadata/1.json)
-    ↓
-User deploys collection contract → shelby:// URI stored on-chain as tokenURI
-    ↓
-Marketplaces resolve shelby:// → Shelby HTTP gateway → metadata JSON
+┌─────────────────────────────────────────────────────────┐
+│                    Frontend (Vercel)                     │
+│              Next.js 14 + Wagmi + RainbowKit             │
+│         Solana Wallet Adapter + Aptos Wallet Adapter     │
+└────────────────────────┬────────────────────────────────┘
+                         │ REST API
+┌────────────────────────▼────────────────────────────────┐
+│                   Backend (Railway)                      │
+│                  Express + TypeScript                    │
+│                                                          │
+│  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐  │
+│  │ Shelby SDK   │  │  ethers.js  │  │  Metaplex UMI │  │
+│  │ (storage)    │  │  (EVM)      │  │  (Solana)     │  │
+│  └──────┬───────┘  └──────┬──────┘  └───────┬───────┘  │
+└─────────┼────────────────┼─────────────────┼───────────┘
+          │                │                 │
+          ▼                ▼                 ▼
+   Shelby Protocol   Ethereum Sepolia   Solana Devnet
+   (Aptos-based)     Smart Contracts    Programs
 ```
 
 ---
 
-## Prerequisites
+## 🔄 How It Works
 
-| Tool | Version | Notes |
-|------|---------|-------|
-| Node.js | ≥ 18 | Required by Shelby SDK |
-| npm | ≥ 9 | |
-| Hardhat | bundled | EVM contract compilation |
-| Solana CLI | ≥ 1.18 | Only if using Solana |
+```
+1. User connects wallets (Aptos for Shelby, EVM/Solana for contracts)
+2. User uploads NFT image + metadata
+3. Backend uploads to Shelby → returns shelby:// URI
+4. User deploys collection contract → shelby:// URI stored on-chain as tokenURI
+5. Marketplaces resolve shelby:// → Shelby HTTP gateway → metadata JSON
+```
 
 ---
 
-## Quick Start
+## 🚀 Quick Start (Local Development)
+
+### Prerequisites
+- Node.js 20+
+- MetaMask browser extension
+- Petra wallet browser extension (for Shelby uploads)
 
 ### 1. Clone and install
 
 ```bash
-git clone <your-repo>
+git clone https://github.com/YOUR_USERNAME/nft-foundry.git
 cd nft-foundry
 npm run install:all
 ```
 
-### 2. Set up Shelby
+### 2. Configure environment
 
-Shelby is the decentralized storage layer. It runs on the Aptos blockchain (testnet: Shelbynet).
-
-**a) Get an API key**
-- Go to [geomi.dev](https://geomi.dev)
-- Create account → "API Resource" → select **Testnet** → copy key (format: `aptoslabs_***`)
-
-**b) Generate an Aptos uploader account**
 ```bash
-node -e "
-const { Account, Ed25519PrivateKey } = require('@aptos-labs/ts-sdk');
-const a = Account.generate();
-console.log('Address    :', a.accountAddress.toString());
-console.log('Private Key:', a.privateKey.toString());
-"
-```
-
-**c) Fund your account**
-
-Your Shelby uploader account needs two tokens:
-- **APT** — for Aptos gas fees
-- **ShelbyUSD** — for storage payments
-
-Fund it using the faucet at: https://docs.shelby.xyz/sdks/typescript/node/guides/uploading-file
-
-### 3. Configure environment
-
-**Backend** — copy and fill in:
-```bash
+# Backend
 cp backend/.env.example backend/.env
-```
+# Fill in all values — see Environment Variables section below
 
-Required values:
-```env
-SHELBY_NETWORK=shelbynet
-SHELBY_API_KEY=aptoslabs_your_key_here
-SHELBY_PRIVATE_KEY=ed25519-priv-your_key_here
-
-EVM_RPC_URL=https://sepolia.infura.io/v3/your-project-id
-EVM_PRIVATE_KEY=your_evm_hex_private_key
-
-# Set AFTER deploying contracts (Step 5):
-EVM_FACTORY_ADDRESS=0x...
-```
-
-**Frontend** — copy and fill in:
-```bash
+# Frontend
 cp frontend/.env.local.example frontend/.env.local
+# Fill in NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 ```
 
-Required values:
-```env
-NEXT_PUBLIC_API_URL=http://localhost:3001
-NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_id_from_cloud.walletconnect.com
-```
-
-Get a free WalletConnect project ID at: https://cloud.walletconnect.com
-
-### 4. Install dependencies
+### 3. Deploy contracts
 
 ```bash
-npm run install:all
+cd contracts/evm
+npm install
+npm run compile
+npm run deploy:sepolia
+# Copy the factory address output → backend/.env EVM_FACTORY_ADDRESS
 ```
 
-This installs backend, frontend, and contract dependencies.
-
-### 5. Compile and deploy contracts
-
-```bash
-# Compile
-npm run compile:contracts
-
-# Deploy to Sepolia testnet
-cd contracts/evm && npm run deploy:sepolia
-
-# OR deploy to Polygon Mumbai
-cd contracts/evm && npm run deploy:polygon-mumbai
-```
-
-After deployment, copy the factory address to `backend/.env`:
-```env
-EVM_FACTORY_ADDRESS=0xYourFactoryAddressHere
-```
-
-Get testnet ETH:
-- Sepolia: https://sepoliafaucet.com
-- Polygon Mumbai: https://faucet.polygon.technology
-
-### 6. Run the stack
+### 4. Run
 
 ```bash
 # Terminal 1 — backend (port 3001)
-npm run dev:backend
+cd backend && npm run dev
 
 # Terminal 2 — frontend (port 3000)
-npm run dev:frontend
+cd frontend && npm run dev
 ```
 
-Or run both together:
+Open **http://localhost:3000**
+
+---
+
+## 🌍 Production Deployment
+
+### Backend → Railway
+
+1. Create account at [railway.app](https://railway.app)
+2. New Project → Deploy from GitHub → select `nft-foundry`
+3. Settings → Root Directory: leave blank, Build Command: `npm install && npm run build`, Start Command: `node dist/index.js`
+4. Add all environment variables from `backend/.env`
+5. Generate domain → copy URL for frontend config
+
+### Frontend → Vercel
+
 ```bash
-npm run dev
+cd frontend
+npx vercel --prod
 ```
 
-Open: **http://localhost:3000**
-
----
-
-## Pages
-
-| Route | Description |
-|-------|-------------|
-| `/` | Deploy a single NFT collection (upload 1 image → configure → deploy) |
-| `/batch` | Batch deploy — upload many images at once, edit metadata per item |
-| `/mint` | Mint an NFT into an existing collection |
-| `/collections` | Browse collections deployed from this browser session |
-| `/collection/[address]?chain=sepolia` | Collection detail page (on-chain stats + mint) |
-
----
-
-## API Endpoints
-
-### NFT
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/nft/chains` | List supported chains |
-| POST | `/api/nft/upload-metadata` | Upload single NFT to Shelby (multipart) |
-| POST | `/api/nft/upload-collection` | Upload batch to Shelby (multipart) |
-| POST | `/api/nft/deploy` | Deploy collection contract |
-| POST | `/api/nft/mint` | Mint NFT into collection |
-| GET | `/api/nft/collection/:chain/:address` | Read on-chain collection info |
-
-### Shelby
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/shelby/status` | Shelby connection + account info |
-| GET | `/api/shelby/retrieve/*` | Download a blob by blobName |
-| GET | `/api/shelby/url?uri=shelby://...` | Convert shelby:// to HTTP URL |
-
-### Wallet
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/wallet/verify` | Verify wallet signature (EVM or Solana) |
-
-### Health
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Server + all services status |
-
----
-
-## Shelby Storage
-
-Shelby Protocol is a decentralized storage network built on Aptos. NFT metadata is addressed as:
-
+Set environment variables in Vercel dashboard:
 ```
-shelby://{aptosAccountAddress}/{blobName}
-```
-
-Example:
-```
-shelby://0xabc123.../nfts/my-collection/metadata/1.json
-```
-
-This URI is stored in the NFT contract's `tokenURI`. To retrieve the metadata, resolve via:
-```
-https://api.shelbynet.shelby.xyz/shelby/v1/blobs/{accountAddress}/{blobName}
-```
-
-The backend creates one Aptos account as the "uploader" — all blobs are stored under this account. The `SHELBY_PRIVATE_KEY` in `.env` controls this account.
-
-**Blob naming convention:**
-```
-nfts/{collectionId}/images/{index}.{ext}    ← image
-nfts/{collectionId}/metadata/{index}.json   ← metadata JSON
+NEXT_PUBLIC_API_URL=https://your-railway-backend.up.railway.app
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_id
+NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 ```
 
 ---
 
-## Smart Contracts
+## 🔑 Environment Variables
 
-### ShelbyNFT
+### Backend (`backend/.env`)
 
-ERC-721 with Shelby-native storage:
-- Stores Shelby CID per token (mapping `tokenId → shelbyCID`)
-- `tokenURI()` returns `shelby://{cid}`
-- `mint(address, shelbyCID)` — public mint with payment
-- `ownerMint(address, shelbyCID)` — free owner mint
-- `batchMint(address, shelbyCIDs[])` — batch mint
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SHELBY_PRIVATE_KEY` | ✅ | Aptos Ed25519 private key for Shelby uploader account |
+| `SHELBY_API_KEY` | ✅ | API key from [geomi.dev](https://geomi.dev) |
+| `SHELBY_NETWORK` | ✅ | `shelbynet` (testnet) or `mainnet` |
+| `EVM_RPC_URL` | ✅ | Infura/Alchemy RPC endpoint |
+| `EVM_PRIVATE_KEY` | ✅ | Deployer wallet private key |
+| `EVM_FACTORY_ADDRESS` | ✅ | Deployed ShelbyNFTFactory address |
+| `EVM_CHAIN_ID` | ✅ | `11155111` for Sepolia |
+| `POLYGON_RPC_URL` | no | Polygon Mumbai RPC |
+| `POLYGON_FACTORY_ADDRESS` | no | Factory on Polygon |
+| `SOLANA_RPC_URL` | no | Solana RPC (default: devnet) |
+| `SOLANA_PRIVATE_KEY` | no | Base64-encoded Solana keypair |
+| `ALLOWED_ORIGINS` | ✅ | Comma-separated CORS origins |
+| `PORT` | no | Server port (default: 3001) |
+
+### Frontend (`frontend/.env.local`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | ✅ | Backend URL |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | ✅ | From [cloud.walletconnect.com](https://cloud.walletconnect.com) |
+| `NEXT_PUBLIC_SOLANA_RPC_URL` | no | Solana RPC override |
+
+---
+
+## 📡 API Reference
+
+### NFT Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/nft/chains` | List supported chains |
+| `POST` | `/api/nft/upload-metadata` | Upload single NFT to Shelby |
+| `POST` | `/api/nft/upload-collection` | Batch upload to Shelby |
+| `POST` | `/api/nft/deploy` | Deploy collection contract |
+| `POST` | `/api/nft/mint` | Mint NFT into collection |
+| `GET` | `/api/nft/collection/:chain/:address` | On-chain collection info |
+
+### Shelby Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/shelby/status` | Shelby connection status |
+| `GET` | `/api/shelby/retrieve/*` | Download blob by name |
+| `GET` | `/api/shelby/url?uri=shelby://...` | Convert URI to HTTP URL |
+
+### Other
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Full service health check |
+| `POST` | `/api/wallet/verify` | Verify wallet signature |
+
+---
+
+## 🔗 Smart Contracts
+
+### ShelbyNFT (ERC-721)
+
+Stores Shelby CIDs on-chain per token. `tokenURI()` returns `shelby://{accountAddress}/{blobName}`.
+
+Key functions:
+- `mint(address to, string shelbyCID)` — public mint with payment
+- `ownerMint(address to, string shelbyCID)` — free owner mint
+- `batchMint(address to, string[] shelbyCIDs)` — batch mint
 - `togglePublicMint()` — enable/disable public minting
-- `pause()` / `unpause()` — emergency stop
+- `withdraw()` — withdraw collected mint fees
 
 ### ShelbyNFTFactory
 
-Creates new ShelbyNFT collections:
-- `deployCollection(name, symbol, maxSupply, mintPrice, baseTokenURI)` → deploys new ShelbyNFT and transfers ownership to `msg.sender`
-- Charges a `deploymentFee` (default 0.001 ETH)
-- Tracks all collections per creator
+Deploys new ShelbyNFT collections. Charges 0.001 ETH deployment fee.
 
-### Run tests
+- `deployCollection(name, symbol, maxSupply, mintPrice, baseTokenURI)` → deploys and returns collection address
+
+### Deployed Addresses
+
+| Network | Factory Address |
+|---------|----------------|
+| Ethereum Sepolia | See `contracts/evm/deployed-addresses.json` |
+
+---
+
+## 🗂 Project Structure
+
+```
+nft-foundry/
+├── frontend/               # Next.js 14 app
+│   └── src/
+│       ├── components/     # UI components
+│       │   ├── DeployForm.tsx
+│       │   ├── MintForm.tsx
+│       │   ├── BatchUploadForm.tsx
+│       │   ├── Navbar.tsx
+│       │   ├── AptosWalletButton.tsx
+│       │   └── WalletProviders.tsx
+│       ├── pages/          # Next.js pages
+│       ├── lib/            # API client, wagmi config, utils
+│       ├── context/        # Chain selection context
+│       └── hooks/          # Unified wallet hook
+├── backend/                # Express API
+│   └── src/
+│       ├── routes/         # API route handlers
+│       ├── services/       # shelby.ts, evm.ts, solana.ts
+│       ├── middleware/     # Error handler
+│       └── types/          # TypeScript interfaces
+└── contracts/
+    └── evm/                # Hardhat project
+        └── src/
+            ├── ShelbyNFT.sol
+            └── ShelbyNFTFactory.sol
+```
+
+---
+
+## 🧪 Running Tests
 
 ```bash
+# Contract tests
 cd contracts/evm
 npm test
 ```
 
 ---
 
-## Supported Chains
+## 🛠 Tech Stack
 
-| Chain | ID | Type | Status |
-|-------|----|------|--------|
-| Ethereum Sepolia | `sepolia` | EVM | ✅ Testnet |
-| Polygon Mumbai | `polygon-mumbai` | EVM | ✅ Testnet |
-| Solana Devnet | `solana-devnet` | Solana | ✅ Testnet (via Metaplex) |
-
-To add a new EVM chain:
-1. Add it to `backend/src/routes/nft.ts` `/api/nft/chains`
-2. Add RPC URL + factory address env vars
-3. Add a case to `backend/src/services/evm.ts` `getChainConfig()`
-4. Add a new Hardhat network to `contracts/evm/hardhat.config.ts`
-
----
-
-## Scripts Reference
-
-```bash
-# Install everything
-npm run install:all
-
-# Development
-npm run dev              # both backend + frontend concurrently
-npm run dev:backend      # backend only (port 3001)
-npm run dev:frontend     # frontend only (port 3000)
-
-# Build
-npm run build:backend
-npm run build:frontend
-npm run build            # both
-
-# Contracts
-npm run compile:contracts
-cd contracts/evm && npm run deploy:sepolia
-cd contracts/evm && npm run deploy:polygon-mumbai
-cd contracts/evm && npm test
-```
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 14, TypeScript, Tailwind CSS |
+| EVM Wallets | Wagmi v2, RainbowKit v2, viem |
+| Solana Wallets | @solana/wallet-adapter |
+| Aptos Wallets | @aptos-labs/wallet-adapter-react |
+| Backend | Express.js, TypeScript, ts-node |
+| EVM Contracts | Solidity 0.8.24, OpenZeppelin v5, Hardhat |
+| Solana Programs | Metaplex UMI |
+| Storage | Shelby Protocol (@shelby-protocol/sdk) |
+| Aptos SDK | @aptos-labs/ts-sdk v5 |
+| Frontend Host | Vercel |
+| Backend Host | Railway |
 
 ---
 
-## Environment Variables Reference
+## ⚠️ Known Limitations (Testnet)
 
-### Backend (`backend/.env`)
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PORT` | no | Server port (default: 3001) |
-| `NODE_ENV` | no | `development` or `production` |
-| `SHELBY_NETWORK` | yes | `shelbynet` (testnet) or `mainnet` |
-| `SHELBY_API_KEY` | yes | API key from geomi.dev |
-| `SHELBY_PRIVATE_KEY` | yes | Aptos Ed25519 private key for uploader account |
-| `EVM_RPC_URL` | yes | Infura/Alchemy RPC for EVM chains |
-| `EVM_PRIVATE_KEY` | yes | Hex private key for EVM contract deployer |
-| `EVM_FACTORY_ADDRESS` | yes | Deployed ShelbyNFTFactory address (Sepolia) |
-| `POLYGON_RPC_URL` | no | Polygon RPC (default: Mumbai public) |
-| `POLYGON_FACTORY_ADDRESS` | no | Deployed factory on Polygon |
-| `SOLANA_RPC_URL` | no | Solana RPC (default: devnet) |
-| `SOLANA_PRIVATE_KEY` | no | Base64-encoded Solana keypair JSON |
-| `ETHERSCAN_API_KEY` | no | For contract verification |
-| `ALLOWED_ORIGINS` | no | Comma-separated CORS origins |
-
-### Frontend (`frontend/.env.local`)
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `NEXT_PUBLIC_API_URL` | yes | Backend URL (default: http://localhost:3001) |
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | yes | From cloud.walletconnect.com |
-| `NEXT_PUBLIC_SOLANA_RPC_URL` | no | Solana RPC override |
+- Shelby uploader account needs periodic refunding with APT + ShelbyUSD from the [Shelby faucet](https://docs.shelby.xyz/sdks/typescript/node/guides/uploading-file) — each upload costs a small gas fee
+- Sepolia ETH needed for contract deployment — get from [QuickNode faucet](https://faucet.quicknode.com/ethereum/sepolia)
+- Shelby blob TTL is 30 days by default on testnet — blobs expire unless renewed
+- Solana deployment uses Metaplex on devnet — requires SOL from `solana airdrop`
 
 ---
 
-## Troubleshooting
-
-**"SHELBY_PRIVATE_KEY not set"**
-Generate an Aptos key and set it in `backend/.env`. See Setup Step 2b above.
-
-**"Factory contract not deployed"**
-You haven't deployed the EVM contracts yet, or forgot to copy the address to `.env`. Run `npm run deploy:sepolia` in `contracts/evm`.
-
-**"Insufficient payment" on mint**
-The collection's `mintPrice` is greater than 0 and you didn't send enough ETH. Check the contract's mint price.
-
-**Shelby upload times out**
-Your uploader account may be out of ShelbyUSD. Re-fund it from the faucet at docs.shelby.xyz.
-
-**WalletConnect modal doesn't open**
-Set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in `frontend/.env.local`. Get a free key at cloud.walletconnect.com.
-
-**Images not loading from Shelby**
-Shelby uses the HTTP gateway: `https://api.shelbynet.shelby.xyz/shelby/v1/blobs/{account}/{blobName}`. Ensure blobs haven't expired (default TTL is 30 days).
-
----
-
-## Resources
+## 🙏 Resources
 
 - [Shelby Protocol Docs](https://docs.shelby.xyz)
-- [Shelby SDK Quickstart](https://docs.shelby.xyz/sdks/typescript/node/guides/uploading-file)
-- [Get API Key (Geomi)](https://geomi.dev)
-- [Shelby GitHub](https://github.com/shelby/examples)
+- [Shelby SDK Guide](https://docs.shelby.xyz/sdks/typescript/node/guides/uploading-file)
+- [Get Shelby API Key](https://geomi.dev)
 - [RainbowKit Docs](https://www.rainbowkit.com/docs)
 - [Wagmi Docs](https://wagmi.sh)
-- [Hardhat Docs](https://hardhat.org/docs)
 - [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/5.x)
+- [Hardhat Docs](https://hardhat.org/docs)
