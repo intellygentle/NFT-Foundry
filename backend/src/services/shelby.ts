@@ -119,16 +119,11 @@ export class ShelbyService {
 
     // Load @aptos-labs/ts-sdk
     const aptos = require("@aptos-labs/ts-sdk");
-    const { Ed25519PrivateKey, Ed25519Account, Account, Network, AptosConfig, Aptos } = aptos;
+    const { Ed25519PrivateKey, Ed25519Account, Account, Network, AptosConfig } = aptos;
 
     if (!Ed25519PrivateKey) {
       throw new Error("@aptos-labs/ts-sdk not installed. Run: npm install @aptos-labs/ts-sdk@5");
     }
-
-    // Shelbynet uses its own fullnode — must be set explicitly
-    // If we just pass Network.TESTNET it hits api.testnet.aptoslabs.com which
-    // requires a separate Aptos API key and is NOT Shelbynet
-    const SHELBYNET_FULLNODE = "https://api.shelbynet.shelby.xyz/v1";
 
     // Build Aptos account
     const privateKey = new Ed25519PrivateKey(privateKeyStr);
@@ -141,16 +136,33 @@ export class ShelbyService {
     }
     this._accountAddress = this.account.accountAddress.toString();
 
-    // Build Shelby client with explicit Shelbynet fullnode URL
-    // Pass fullnode URL directly so the SDK doesn't default to aptoslabs testnet
-    const config: Record<string, unknown> = {
-      fullnode: SHELBYNET_FULLNODE,
-      signer:   this.account,
-      account:  this.account,
-    };
-    if (apiKey) config.apiKey = apiKey;
+    // Build Shelby client config
+    // The ShelbyNodeClient takes the same config as AptosConfig.
+    // We must use Network.CUSTOM with explicit fullnode URL to point at Shelbynet
+    // rather than Network.TESTNET which points to api.testnet.aptoslabs.com
+    let clientConfig: Record<string, unknown>;
 
-    this.client = new ShelbyNodeClient(config);
+    if (Network && Network.CUSTOM && AptosConfig) {
+      // Use CUSTOM network with explicit Shelbynet fullnode URL
+      clientConfig = {
+        network: Network.CUSTOM,
+        fullnode: "https://api.shelbynet.shelby.xyz/v1",
+        faucet: "https://faucet.shelbynet.shelby.xyz",
+      };
+    } else if (Network && (Network as any).SHELBYNET) {
+      clientConfig = { network: (Network as any).SHELBYNET };
+    } else if (Network && Network.TESTNET) {
+      // Last resort — use testnet with the Geomi API key which covers both
+      clientConfig = { network: Network.TESTNET };
+    } else {
+      clientConfig = {};
+    }
+
+    if (apiKey) clientConfig.apiKey = apiKey;
+    clientConfig.signer  = this.account;
+    clientConfig.account = this.account;
+
+    this.client = new ShelbyNodeClient(clientConfig);
     this._initialized = true;
 
     console.log(`✅ ShelbyService ready | account: ${this._accountAddress} | network: ${networkStr}`);
