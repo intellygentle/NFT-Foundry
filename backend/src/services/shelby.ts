@@ -182,12 +182,24 @@ export class ShelbyService {
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const { transaction } = await this.client.upload({
-          account: this.account,
+        // Log account shape to debug param name issue
+        console.log(`  [Shelby] account type: ${typeof this.account}`);
+        console.log(`  [Shelby] account keys: ${this.account ? Object.keys(this.account).join(', ') : 'null'}`);
+        console.log(`  [Shelby] accountAddress: ${this._accountAddress}`);
+
+        // Try both param names — different SDK versions use different names
+        // docs@latest use 'account', specs page uses 'signer'
+        const uploadParams: any = {
           blobData,
           blobName,
           expirationMicros,
-        });
+        };
+
+        // Pass both — the SDK will use whichever it recognizes
+        uploadParams.account = this.account;
+        uploadParams.signer = this.account;
+
+        const { transaction } = await this.client.upload(uploadParams);
 
         console.log(`📤 Shelby upload: ${blobName} | tx: ${transaction.hash}`);
         return {
