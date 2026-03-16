@@ -136,31 +136,25 @@ export class ShelbyService {
     }
     this._accountAddress = this.account.accountAddress.toString();
 
-    // Build Shelby client config
-    // The ShelbyNodeClient takes the same config as AptosConfig.
-    // We must use Network.CUSTOM with explicit fullnode URL to point at Shelbynet
-    // rather than Network.TESTNET which points to api.testnet.aptoslabs.com
-    let clientConfig: Record<string, unknown>;
-
-    if (Network && Network.CUSTOM && AptosConfig) {
-      // Use CUSTOM network with explicit Shelbynet fullnode URL
-      clientConfig = {
-        network: Network.CUSTOM,
-        fullnode: "https://api.shelbynet.shelby.xyz/v1",
-        faucet: "https://faucet.shelbynet.shelby.xyz",
-      };
-    } else if (Network && (Network as any).SHELBYNET) {
-      clientConfig = { network: (Network as any).SHELBYNET };
-    } else if (Network && Network.TESTNET) {
-      // Last resort — use testnet with the Geomi API key which covers both
-      clientConfig = { network: Network.TESTNET };
-    } else {
-      clientConfig = {};
-    }
-
+    // Build Shelby client config with ALL required Shelbynet endpoints
+    // Source: https://docs.shelby.xyz/tools/cli (shelbynet context config)
+    const clientConfig: Record<string, unknown> = {
+      network: Network?.CUSTOM ?? "custom",
+      // Aptos layer endpoints
+      fullnode: "https://api.shelbynet.shelby.xyz/v1",
+      faucet:   "https://faucet.shelbynet.shelby.xyz",
+      // Indexer is required by ShelbyClientConfig
+      indexer: {
+        endpoint: "https://api.shelbynet.shelby.xyz/v1/graphql",
+      },
+      // Shelby RPC endpoint
+      rpc: {
+        endpoint: "https://api.shelbynet.shelby.xyz/shelby",
+      },
+      signer:  this.account,
+      account: this.account,
+    };
     if (apiKey) clientConfig.apiKey = apiKey;
-    clientConfig.signer  = this.account;
-    clientConfig.account = this.account;
 
     this.client = new ShelbyNodeClient(clientConfig);
     this._initialized = true;
