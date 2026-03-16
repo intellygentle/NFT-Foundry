@@ -136,25 +136,19 @@ export class ShelbyService {
     }
     this._accountAddress = this.account.accountAddress.toString();
 
-    // Build Shelby client config with ALL required Shelbynet endpoints
-    // Source: https://docs.shelby.xyz/tools/cli (shelbynet context config)
-    const clientConfig: Record<string, unknown> = {
-      network: Network?.CUSTOM ?? "custom",
-      // Aptos layer endpoints
+    // Build Shelby client config with all required Shelbynet endpoints
+    const clientConfig: any = {
+      network: (Network as any).SHELBYNET ?? Network?.CUSTOM ?? "custom",
+      // Aptos fullnode for Shelbynet
       fullnode: "https://api.shelbynet.shelby.xyz/v1",
-      faucet:   "https://faucet.shelbynet.shelby.xyz",
-      // Indexer is required by ShelbyClientConfig
+      // Indexer GraphQL endpoint — required by ShelbyClientConfig
       indexer: {
         endpoint: "https://api.shelbynet.shelby.xyz/v1/graphql",
       },
-      // Shelby RPC endpoint
-      rpc: {
-        endpoint: "https://api.shelbynet.shelby.xyz/shelby",
-      },
-      signer:  this.account,
-      account: this.account,
     };
     if (apiKey) clientConfig.apiKey = apiKey;
+    clientConfig.signer  = this.account;
+    clientConfig.account = this.account;
 
     this.client = new ShelbyNodeClient(clientConfig);
     this._initialized = true;
