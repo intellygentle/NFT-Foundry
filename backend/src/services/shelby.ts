@@ -108,17 +108,27 @@ export class ShelbyService {
     console.log(`  [Shelby] account: ${this._accountAddress}`);
     console.log(`  [Shelby] account keys: ${Object.keys(this.account).join(", ")}`);
 
-    // Build client config — try SHELBYNET first, fall back through options
-    const shelbynet = (Network as any)?.SHELBYNET;
-    const clientConfig: any = shelbynet
-      ? { network: shelbynet }
-      : {
-          network: Network?.CUSTOM ?? "custom",
-          fullnode: "https://api.shelbynet.shelby.xyz/v1",
-          indexer: { endpoint: "https://api.shelbynet.shelby.xyz/v1/graphql" },
-        };
-
+    // Build client config
+    // IMPORTANT: Keep this minimal — complex configs cause upload() to return undefined
+    // The simple { network } config is what produced actual blockchain transactions previously
+    const clientConfig: any = {};
     if (apiKey) clientConfig.apiKey = apiKey;
+
+    // Try network values in order of preference
+    const shelbynet = (Network as any)?.SHELBYNET;
+    const testnet   = Network?.TESTNET;
+
+    if (shelbynet !== undefined) {
+      clientConfig.network = shelbynet;
+      console.log("  [Shelby] using Network.SHELBYNET");
+    } else if (testnet !== undefined) {
+      clientConfig.network = testnet;
+      console.log("  [Shelby] using Network.TESTNET (fallback)");
+    } else {
+      console.log("  [Shelby] no network set — using SDK defaults");
+    }
+
+    console.log("  [Shelby] clientConfig keys:", Object.keys(clientConfig).join(", "));
 
     this.client = new ShelbyNodeClient(clientConfig);
 
