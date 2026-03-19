@@ -1,15 +1,8 @@
 /**
  * shelby.ts — Shelby Protocol storage service
  *
- * KEY FIX: @shelby-protocol/sdk@0.2.4 exports "./node" as ESM-only
- * (no "require" field in exports map, only "import").
- * CommonJS require() cannot load ESM-only packages.
- * Solution: use Node's dynamic import() which works from CommonJS files
- * and correctly loads ESM modules.
- *
- * We also do NOT import @aptos-labs/ts-sdk directly — it's bundled
- * inside @shelby-protocol/sdk/node already. We pull Account/Ed25519Account
- * from the same dynamic import so versions are guaranteed to match.
+ * Uses @shelby-protocol/sdk@0.2.4 loaded via dynamic import() since
+ * the package only exports ESM (no CommonJS require support).
  */
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -40,127 +33,107 @@ export interface NFTMetadata {
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const SHELBYNET_RPC_BASE = "https://api.testnet.shelby.xyz";
+const SHELBYNET_RPC_BASE = "https://api.shelbynet.shelby.xyz";
 
 // ─── Lazy ESM loader ────────────────────────────────────────────────────────
 
-// Cache the loaded module so we only call import() once
 let _shelbyModule: any = null;
 
 async function getShelbyModule(): Promise<any> {
   if (_shelbyModule) return _shelbyModule;
 
-  // Resolve path to the Shelby SDK ESM build.
-  // Works whether running from src/ (ts-node) or dist/ (compiled):
-  //   ts-node:  __dirname = .../backend/src/services/
-  //   compiled: __dirname = .../backend/dist/services/
-  // In both cases, node_modules is two levels up from services/
   const path = require("path");
-  const distPath = path.resolve(
-    __dirname,
-    "../../node_modules/@shelby-protocol/sdk/dist/node/index.mjs"
-  );
-
-  // Fallback: try one level up (in case of flattened dist structure)
-  const fallbackPath = path.resolve(
-    __dirname,
-    "../node_modules/@shelby-protocol/sdk/dist/node/index.mjs"
-  );
-
   const fs = require("fs");
-  const targetPath = fs.existsSync(distPath) ? distPath : fallbackPath;
 
-  try {
-    _shelbyModule = await import(targetPath);
-    console.log("  [Shelby] loaded from:", targetPath);
-  } catch (err) {
-    throw new Error(
-      `Failed to load @shelby-protocol/sdk from ${targetPath}: ${err}`
-    );
+  const candidates = [
+    path.resolve(__dirname, "../../node_modules/@shelby-protocol/sdk/dist/node/index.mjs"),
+    path.resolve(__dirname, "../node_modules/@shelby-protocol/sdk/dist/node/index.mjs"),
+    path.resolve(process.cwd(), "node_modules/@shelby-protocol/sdk/dist/node/index.mjs"),
+  ];
+
+  const targetPath = candidates.find(p => fs.existsSync(p));
+  if (!targetPath) {
+    throw new Error(`@shelby-protocol/sdk not found. Tried:\n${candidates.join('\n')}`);
   }
 
+  _shelbyModule = await import(targetPath);
+  console.log("  [Shelby] SDK loaded from:", targetPath);
   return _shelbyModule;
 }
 
 // ─── ShelbyService ──────────────────────────────────────────────────────────
 
 export class ShelbyService {
-  // These are set during initialize() — not in constructor
   private client: any = null;
   private account: any = null;
   private _accountAddress: string = "";
   private _initialized = false;
-
-  // ── Initialize (call once before using) ─────────────────────────────────
 
   async initialize(): Promise<void> {
     if (this._initialized) return;
 
     const privateKeyStr = process.env.SHELBY_PRIVATE_KEY;
     const apiKey        = process.env.SHELBY_API_KEY;
-    const networkStr    = (process.env.SHELBY_NETWORK || "shelbynet").toLowerCase();
 
     if (!privateKeyStr) {
-      throw new Error(
-        "SHELBY_PRIVATE_KEY not set. Run the key generation command from the .env setup guide."
-      );
+      throw new Error("SHELBY_PRIVATE_KEY not set.");
     }
 
-    // Load the Shelby SDK (ESM, loaded by direct path)
+    // Load Shelby SDK
     const shelby = await getShelbyModule();
     const mod = shelby.default ?? shelby;
 
     const { ShelbyNodeClient } = mod;
     if (typeof ShelbyNodeClient !== "function") {
-      throw new Error(
-        `ShelbyNodeClient not found. Available: ${Object.keys(mod).join(", ")}`
-      );
+      throw new Error(`ShelbyNodeClient not found. Exports: ${Object.keys(mod).join(", ")}`);
     }
 
-    // Load @aptos-labs/ts-sdk
+    // Load Aptos SDK
     const aptos = require("@aptos-labs/ts-sdk");
-    const { Ed25519PrivateKey, Ed25519Account, Account, Network, AptosConfig } = aptos;
+    const { Ed25519PrivateKey, Ed25519Account, Account, Network } = aptos;
 
     if (!Ed25519PrivateKey) {
-      throw new Error("@aptos-labs/ts-sdk not installed. Run: npm install @aptos-labs/ts-sdk@5");
+      throw new Error("@aptos-labs/ts-sdk not installed.");
     }
 
-    // Build Aptos account
+    // Build account
     const privateKey = new Ed25519PrivateKey(privateKeyStr);
     if (Account && typeof Account.fromPrivateKey === "function") {
       this.account = await Account.fromPrivateKey({ privateKey });
-    } else if (Ed25519Account) {
-      this.account = new Ed25519Account({ privateKey });
     } else {
-      throw new Error("Cannot construct Aptos account — Ed25519Account not found in SDK");
+      this.account = new Ed25519Account({ privateKey });
     }
     this._accountAddress = this.account.accountAddress.toString();
 
-    // Build Shelby client config with all required Shelbynet endpoints
-    const clientConfig: any = {
-      network: (Network as any).SHELBYNET ?? Network?.CUSTOM ?? "custom",
-      // Aptos fullnode for Shelbynet
-      fullnode: "https://api.shelbynet.shelby.xyz/v1",
-      // Indexer GraphQL endpoint — required by ShelbyClientConfig
-      indexer: {
-        endpoint: "https://api.shelbynet.shelby.xyz/v1/graphql",
-      },
-    };
+    console.log(`  [Shelby] account: ${this._accountAddress}`);
+    console.log(`  [Shelby] account keys: ${Object.keys(this.account).join(", ")}`);
+
+    // Build client config — try SHELBYNET first, fall back through options
+    const shelbynet = (Network as any)?.SHELBYNET;
+    const clientConfig: any = shelbynet
+      ? { network: shelbynet }
+      : {
+          network: Network?.CUSTOM ?? "custom",
+          fullnode: "https://api.shelbynet.shelby.xyz/v1",
+          indexer: { endpoint: "https://api.shelbynet.shelby.xyz/v1/graphql" },
+        };
+
     if (apiKey) clientConfig.apiKey = apiKey;
-    clientConfig.signer  = this.account;
-    clientConfig.account = this.account;
 
     this.client = new ShelbyNodeClient(clientConfig);
-    this._initialized = true;
 
-    console.log(`✅ ShelbyService ready | account: ${this._accountAddress} | network: ${networkStr}`);
+    // Log what methods are available on the client
+    const clientMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(this.client))
+      .filter(m => typeof this.client[m] === "function");
+    console.log(`  [Shelby] client methods: ${clientMethods.join(", ")}`);
+
+    this._initialized = true;
+    console.log(`✅ ShelbyService ready | account: ${this._accountAddress}`);
   }
 
   private async ensureInitialized(): Promise<void> {
     if (!this._initialized) await this.initialize();
   }
-
-  // ── URL helpers ──────────────────────────────────────────────────────────
 
   private publicUrl(blobName: string): string {
     return `${SHELBYNET_RPC_BASE}/shelby/v1/blobs/${this._accountAddress}/${blobName}`;
@@ -170,21 +143,17 @@ export class ShelbyService {
     return `shelby://${this._accountAddress}/${blobName}`;
   }
 
-  // ── Core upload ──────────────────────────────────────────────────────────
-
   async uploadBlob(blobData: Buffer, blobName: string, ttlDays = 30): Promise<ShelbyUploadResult> {
     await this.ensureInitialized();
     const expirationMicros = (Date.now() + ttlDays * 24 * 60 * 60 * 1000) * 1000;
 
-    // Retry up to 3 times — Shelby testnet nodes can be temporarily unavailable
     let lastError: Error | null = null;
+
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        if (attempt > 1) {
-          console.log(`  [Shelby] upload retry ${attempt}/3 | ${blobName}`);
-        }
+        console.log(`  [Shelby] upload attempt ${attempt}/3: ${blobName}`);
 
-        // Pass all common Aptos param names — SDK version 0.2.4 may use any of these
+        // Pass every possible param name the SDK might expect
         const uploadParams: any = {
           blobData,
           blobName,
@@ -195,26 +164,49 @@ export class ShelbyService {
           publisher: this.account,
         };
 
-        const { transaction } = await this.client.upload(uploadParams);
+        const result = await this.client.upload(uploadParams);
 
-        console.log(`📤 Shelby upload: ${blobName} | tx: ${transaction.hash}`);
+        // Log the raw result so we can see its shape
+        console.log(`  [Shelby] upload raw result type: ${typeof result}`);
+        console.log(`  [Shelby] upload raw result keys: ${result ? Object.keys(result).join(", ") : "null/undefined"}`);
+
+        if (!result) {
+          throw new Error("upload() returned undefined — check SDK version compatibility");
+        }
+
+        // Handle different return shapes
+        const txHash =
+          result.transaction?.hash ||        // { transaction: { hash } }
+          result.transactionHash ||          // { transactionHash }
+          result.hash ||                     // { hash }
+          result.tx?.hash ||                 // { tx: { hash } }
+          result.pendingTransaction?.hash || // { pendingTransaction: { hash } }
+          "unknown";
+
+        console.log(`📤 Shelby upload success: ${blobName} | tx: ${txHash}`);
+
         return {
           accountAddress: this._accountAddress,
           blobName,
           publicUrl: this.publicUrl(blobName),
           shelbyUri: this.shelbyUri(blobName),
-          transactionHash: transaction.hash,
+          transactionHash: txHash,
         };
+
       } catch (err: any) {
         lastError = err;
+        console.error(`  [Shelby] attempt ${attempt} error: ${err.message}`);
+
         const isTransient =
           err.message?.includes('500') ||
           err.message?.includes('Internal Server Error') ||
-          err.message?.includes('multipart');
+          err.message?.includes('multipart') ||
+          err.message?.includes('ECONNRESET') ||
+          err.message?.includes('timeout');
 
         if (isTransient && attempt < 3) {
-          const delay = attempt * 2000; // 2s, 4s
-          console.warn(`⚠️  Shelby upload attempt ${attempt} failed, retrying in ${delay}ms...`);
+          const delay = attempt * 2000;
+          console.warn(`  [Shelby] transient error, retrying in ${delay}ms...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
@@ -224,21 +216,15 @@ export class ShelbyService {
     throw lastError;
   }
 
-  // ── Image upload ─────────────────────────────────────────────────────────
-
   async uploadImage(file: MetadataFile, collectionId: string, index: number): Promise<ShelbyUploadResult> {
     const ext = file.filename.split(".").pop() || "bin";
     return this.uploadBlob(file.buffer, `nfts/${collectionId}/images/${index}.${ext}`);
   }
 
-  // ── Metadata upload ───────────────────────────────────────────────────────
-
   async uploadMetadata(metadata: NFTMetadata, collectionId: string, index: number): Promise<ShelbyUploadResult> {
     const blobData = Buffer.from(JSON.stringify(metadata, null, 2));
     return this.uploadBlob(blobData, `nfts/${collectionId}/metadata/${index}.json`);
   }
-
-  // ── Combined image + metadata ─────────────────────────────────────────────
 
   async uploadNFTData(
     imageFile: MetadataFile,
@@ -254,8 +240,6 @@ export class ShelbyService {
       imageShelbyUri:    imageResult.shelbyUri,
     };
   }
-
-  // ── Batch collection upload ───────────────────────────────────────────────
 
   async uploadCollection(
     imageFiles: MetadataFile[],
@@ -277,8 +261,6 @@ export class ShelbyService {
     return uris;
   }
 
-  // ── Download ──────────────────────────────────────────────────────────────
-
   async download(blobName: string): Promise<Buffer> {
     await this.ensureInitialized();
     const blob = await this.client.download({
@@ -292,8 +274,6 @@ export class ShelbyService {
       blob.stream.on("error", reject);
     });
   }
-
-  // ── Static URI helpers ────────────────────────────────────────────────────
 
   static parseShelbyUri(uri: string): { accountAddress: string; blobName: string } {
     const stripped = uri.replace("shelby://", "");
@@ -320,9 +300,7 @@ export class ShelbyService {
 let _instance: ShelbyService | null = null;
 
 export function getShelbyService(): ShelbyService {
-  if (!_instance) {
-    _instance = new ShelbyService();
-  }
+  if (!_instance) _instance = new ShelbyService();
   return _instance;
 }
 
