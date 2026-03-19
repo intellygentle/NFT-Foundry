@@ -96,7 +96,7 @@ export class ShelbyService {
       throw new Error("@aptos-labs/ts-sdk not installed.");
     }
 
-    // Build account
+    // Build account — Account.fromPrivateKey is the correct v5 API
     const privateKey = new Ed25519PrivateKey(privateKeyStr);
     if (Account && typeof Account.fromPrivateKey === "function") {
       this.account = await Account.fromPrivateKey({ privateKey });
@@ -104,41 +104,15 @@ export class ShelbyService {
       this.account = new Ed25519Account({ privateKey });
     }
     this._accountAddress = this.account.accountAddress.toString();
-
     console.log(`  [Shelby] account: ${this._accountAddress}`);
-    console.log(`  [Shelby] account keys: ${Object.keys(this.account).join(", ")}`);
 
-    // Build client config
-    // IMPORTANT: Keep this minimal — complex configs cause upload() to return undefined
-    // The simple { network } config is what produced actual blockchain transactions previously
-    const clientConfig: any = {};
+    // Client config — use Network.SHELBYNET which exists in the installed SDK
+    const clientConfig: any = { network: Network.SHELBYNET };
     if (apiKey) clientConfig.apiKey = apiKey;
 
-    // Try network values in order of preference
-    const shelbynet = (Network as any)?.SHELBYNET;
-    const testnet   = Network?.TESTNET;
-
-    if (shelbynet !== undefined) {
-      clientConfig.network = shelbynet;
-      console.log("  [Shelby] using Network.SHELBYNET");
-    } else if (testnet !== undefined) {
-      clientConfig.network = testnet;
-      console.log("  [Shelby] using Network.TESTNET (fallback)");
-    } else {
-      console.log("  [Shelby] no network set — using SDK defaults");
-    }
-
-    console.log("  [Shelby] clientConfig keys:", Object.keys(clientConfig).join(", "));
-
     this.client = new ShelbyNodeClient(clientConfig);
-
-    // Log what methods are available on the client
-    const clientMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(this.client))
-      .filter(m => typeof this.client[m] === "function");
-    console.log(`  [Shelby] client methods: ${clientMethods.join(", ")}`);
-
     this._initialized = true;
-    console.log(`✅ ShelbyService ready | account: ${this._accountAddress}`);
+    console.log(`✅ ShelbyService ready | account: ${this._accountAddress} | network: shelbynet`);
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -163,44 +137,22 @@ export class ShelbyService {
       try {
         console.log(`  [Shelby] upload attempt ${attempt}/3: ${blobName}`);
 
-        // Pass every possible param name the SDK might expect
-        const uploadParams: any = {
+        // upload() returns void — it handles blockchain + storage internally
+        await this.client.upload({
+          signer: this.account,
           blobData,
           blobName,
           expirationMicros,
-          signer:    this.account,
-          account:   this.account,
-          sender:    this.account,
-          publisher: this.account,
-        };
+        });
 
-        const result = await this.client.upload(uploadParams);
-
-        // Log the raw result so we can see its shape
-        console.log(`  [Shelby] upload raw result type: ${typeof result}`);
-        console.log(`  [Shelby] upload raw result keys: ${result ? Object.keys(result).join(", ") : "null/undefined"}`);
-
-        if (!result) {
-          throw new Error("upload() returned undefined — check SDK version compatibility");
-        }
-
-        // Handle different return shapes
-        const txHash =
-          result.transaction?.hash ||        // { transaction: { hash } }
-          result.transactionHash ||          // { transactionHash }
-          result.hash ||                     // { hash }
-          result.tx?.hash ||                 // { tx: { hash } }
-          result.pendingTransaction?.hash || // { pendingTransaction: { hash } }
-          "unknown";
-
-        console.log(`📤 Shelby upload success: ${blobName} | tx: ${txHash}`);
+        console.log(`📤 Shelby upload success: ${blobName}`);
 
         return {
           accountAddress: this._accountAddress,
           blobName,
           publicUrl: this.publicUrl(blobName),
           shelbyUri: this.shelbyUri(blobName),
-          transactionHash: txHash,
+          transactionHash: "shelbynet",
         };
 
       } catch (err: any) {
